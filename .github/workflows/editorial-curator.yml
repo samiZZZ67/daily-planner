@@ -1,0 +1,62 @@
+﻿name: Editorial News Scout Curator
+
+on:
+  schedule:
+    # Runs twice daily at 05:00 UTC and 17:00 UTC
+    - cron: '0 5,17 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+permissions:
+  contents: write # Required to commit back seen_articles.json
+
+jobs:
+  curate-news:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: DailyTelegramNewsBot
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: DailyTelegramNewsBot/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit test suite
+        run: |
+          python -m unittest discover -s tests
+
+      - name: Execute News Curator
+        env:
+          API1_KEY: ${{ secrets.API1_KEY }}
+          API2_KEY: ${{ secrets.API2_KEY }}
+          API3_KEY: ${{ secrets.API3_KEY }}
+          GEMINI_MODEL_NAME: ${{ secrets.GEMINI_MODEL_NAME || 'gemini-2.5-flash' }}
+          HF_IMAGE_TOKEN_1: ${{ secrets.HF_IMAGE_TOKEN_1 }}
+          HF_IMAGE_TOKEN_2: ${{ secrets.HF_IMAGE_TOKEN_2 }}
+          HF_IMAGE_TOKEN_3: ${{ secrets.HF_IMAGE_TOKEN_3 }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          REVIEW_BOT_TOKEN: ${{ secrets.REVIEW_BOT_TOKEN }}
+          REVIEW_CHAT_ID: ${{ secrets.REVIEW_CHAT_ID }}
+          RECENCY_WINDOW_HOURS: ${{ vars.RECENCY_WINDOW_HOURS || '48' }}
+          MAX_STORIES_PER_STREAM: ${{ vars.MAX_STORIES_PER_STREAM || '5' }}
+        run: |
+          python curate.py
+
+      - name: Commit and push updated seen_articles.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add news_curator/seen_articles.json
+          git diff --staged --quiet || (git commit -m "chore(curator): update seen articles [skip ci]" && git push)
